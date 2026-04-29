@@ -135,7 +135,60 @@ skill 自动接管，先静默地读一遍数据，然后开始问你问题。
 
 ---
 
-## 7. 公共卫生 / 流行病学的额外检查
+## 7. 文献咨询（可选，给 unresolved_decisions 找方法学建议）
+
+如果 80% 自动清洗跑完之后 `unresolved_decisions` 列表非空（绝大多数真实数据都会有几条），skill 会**询问**你要不要进入文献咨询阶段。**默认关闭**，要你显式同意才开。
+
+### 它做什么
+
+针对每个未决问题（如"`tenure` 8% 非 MCAR 缺失，需要 MICE"），帮你找：
+
+- 类似情境下别人是怎么处理的（顶刊 / 主流期刊 / 国内 C 刊各自惯例）
+- 可直接引用的方法学文献（含 BibTeX）
+- 论文脚注的可粘贴模板
+
+输出一份 `intake/literature_recommendations.md` 报告，**不修改任何数据**。你读完决定要不要采纳。
+
+### 启用前先问你 4 题
+
+为了让查询精准，开始查之前先问：
+
+1. 你这个研究的核心命题是？（一句话）
+2. 主识别策略？（TWFE / DID / IV / RDD / PSM / 队列 / 描述性）
+3. 已读过的关键文献？（可选，1-5 篇）
+4. 期刊定位？（顶刊 / 主流 / 不确定）
+
+答完写入 `data_contract.yaml > research_context`，**下游模块可复用**——不用每个模块都重复这 4 题。
+
+### 三层 fallback 查询
+
+```
+Layer 1 优先：复用本机 ~/.claude/skills/ 里已装的辅助 skill
+  - systematic-literature-review / perplexity-search /
+    arxiv-database / biorxiv-database / research-lookup /
+    parallel-web / citation-management / pyzotero
+
+Layer 2 兜底：外部 MCP 与 Claude Code 内置工具
+  - OpenAlex MCP / arXiv MCP / WebSearch / WebFetch
+
+Layer 3 最后兜底：Claude 训练知识
+  - 仅在前两层都不可用时启用，标 confidence: medium 并附 disclaimer
+```
+
+每一层只在前一层不够用时才触发。整个过程写入合同的 `literature_consultation` 字段做完整审计（时间戳、查询字符串、调用的 skill / MCP、返回数）。
+
+### 重要约束
+
+- **永远不修改数据字段** —— 只产生 markdown 建议
+- **永远经你显式同意** —— 默认关闭
+- **可复现性保留** —— 同一份原始数据 + 同一组 4 问回答 = 同一组查询字符串
+- **离线时跳过** —— 没网就到 Layer 3，或干脆不启用
+
+详见 [`references/02-literature-consultation.md`](references/02-literature-consultation.md)。
+
+---
+
+## 8. 公共卫生 / 流行病学的额外检查
 
 如果你在第 1 题选了"公卫 / 流病"，skill 会**额外**跑下面 7 项检查。这些内容是其他 4 个清洗 skill **完全没覆盖**的：
 
@@ -153,7 +206,7 @@ skill 自动接管，先静默地读一遍数据，然后开始问你问题。
 
 ---
 
-## 8. 完整流程图
+## 9. 完整流程图
 
 ```
 +------------+
@@ -200,13 +253,22 @@ skill 自动接管，先静默地读一遍数据，然后开始问你问题。
 
 ---
 
-## 9. 版本与计划
+## 10. 版本与计划
 
-### v0.2（当前版本，2026-04-29）
+### v0.3（当前版本，2026-04-29）
 
-经一次真实数据测试后修正过的稳定版。修复了 v0.1 的 5 个会让 skill 在真实数据上立即出错的硬 bug，并新增以下能力：
+新增**可选的文献咨询阶段**：跑完 80% 清洗后，如果 `unresolved_decisions` 非空，可以让 skill 帮你查文献找方法学建议。
 
-- **永远写出 `cleaned_dataset.xlsx`** ——之前只写 `.dta`，但研究者习惯先在 Excel 里目视核对。这是最重要的改进
+- 4-问研究方向沟通（research_question / identification_strategy / key_references / journal_tier）
+- 三层 fallback 查询（本机已装 skill → 外部 MCP → Claude 内置知识）
+- 输出 `intake/literature_recommendations.md` + 合同审计字段 `literature_consultation` + 用户研究上下文 `research_context`
+- 架构 Principle 4 同步精化：禁止抓取分析数据，但允许信息性查询
+
+### v0.2（2026-04-29）
+
+经一次真实数据测试后的稳定版。修复了 v0.1 的 5 个 critical bug，并新增以下能力：
+
+- **永远写出 `cleaned_dataset.xlsx`** ——之前只写 `.dta`，但研究者习惯先在 Excel 里目视核对
 - 复合主键检测——v0.1 会把"碰巧每行都不一样"的连续数值误判为主键
 - pandas 2.x 字符串类型兼容——v0.1 在新版 pandas 下会漏检字符串列
 - xlsx 多 sheet 警告——v0.1 会静默只读第一张
@@ -216,15 +278,15 @@ skill 自动接管，先静默地读一遍数据，然后开始问你问题。
 
 第一版。5 道题问答框架、自动清洗 9 步、公卫专项 7 检查、3 件套输出（v0.2 升级到 4 件套）。
 
-### v0.3 计划
+### v0.4 计划
 
-- 把 SKILL.md 里的细节拆出来成独立的 references 文档
 - 调查权重的 intake 阶段标记（NHANES / CHARLS / HRS）
 - 行业 / 地域代码的格式校验提示（NAICS / FIPS / GB/T 4754）
+- 把 4-问研究方向上推到 intake 主流程的 Slot 6（让所有未决决策都受益）
 
 ---
 
-## 10. 它在更大的工具体系里的位置
+## 11. 它在更大的工具体系里的位置
 
 本仓库是一个更大的实证研究流程工具体系的**第一个模块**，专管"原始数据到 analysis-ready"这一步。后续模块还会有：
 
@@ -244,7 +306,7 @@ empirical-tables-figures-skill       ← 未来：制表绘图
 
 ---
 
-## 11. 安装依赖
+## 12. 安装依赖
 
 **必需**（Python 环境）：
 
@@ -263,7 +325,7 @@ empirical-tables-figures-skill       ← 未来：制表绘图
 
 ---
 
-## 12. 贡献
+## 13. 贡献
 
 欢迎提 issue 和 pull request。**贡献前请先读 `audit-flagship-cleaning.md`**——这是设计本 skill 之前对其他 4 个清洗 skill 的审计报告，理解清楚边界后再改，避免好心办坏事。
 
@@ -275,13 +337,13 @@ empirical-tables-figures-skill       ← 未来：制表绘图
 
 ---
 
-## 13. License
+## 14. License
 
 [CC BY-SA 4.0](LICENSE)。允许商业使用、修改、再分发，但需要署名，且衍生作品必须用同样的协议发布。
 
 ---
 
-## 14. 引用 (Citation)
+## 15. 引用 (Citation)
 
 如果你在论文中使用此 skill 进行数据准备，请在脚注或致谢部分说明：
 
@@ -301,7 +363,7 @@ BibTeX：
 
 ---
 
-## 15. 致谢
+## 16. 致谢
 
 - 数据合同的 YAML 概念跨语言泛化自 [`brycewang-stanford/StatsPAI`](https://github.com/brycewang-stanford/StatsPAI) 的 `data_contract()` 实现
 - 数据清洗 8 步范式参考自 [`Awesome-Agent-Skills-for-Empirical-Research`](https://github.com/brycewang-stanford/Awesome-Agent-Skills-for-Empirical-Research) 中 4 个全流程 skill 的 `references/01-data-cleaning.md`
@@ -311,12 +373,13 @@ BibTeX：
 ## 文件结构
 
 ```
-empirical-data-intake-skill/
+modules/01-data-intake/
 ├── SKILL.md                            主指令文件（Claude Code 读取）
 ├── README.md                           本文件（人读）
 ├── audit-flagship-cleaning.md          设计前对 4 个清洗 skill 的审计报告
-├── LICENSE                             CC BY-SA 4.0
-├── .gitignore
 └── references/
-    └── 01-mode-a-epi-patterns.md       公共卫生 / 流行病学专章
+    ├── 01-mode-a-epi-patterns.md       公共卫生 / 流行病学专章
+    └── 02-literature-consultation.md   文献咨询阶段的三层查询设计
 ```
+
+LICENSE 与 .gitignore 在仓库根目录，由整条 pipeline 共享。

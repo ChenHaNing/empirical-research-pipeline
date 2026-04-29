@@ -47,6 +47,37 @@ routing_recommendation:
   next_module: "02-variable-construction"
   reason: "..."
   next_step_in_module: "..."           # 在下游模块里该跑哪一步
+
+# ---- 研究上下文（用户在文献咨询前回答的 4 问；也可被下游模块复用）----
+research_context:                      # 可空 — 只在用户启用文献咨询时填写
+  research_question: "..."             # 一句话研究命题
+  identification_strategy: TWFE        # TWFE | DID | IV | RDD | PSM | target_trial_emulation | descriptive | other
+  key_references_known:                # 用户列的 1-5 篇关键文献，可空
+    - "Author (Year), Journal"
+  target_journal_tier: mainstream      # top | mainstream | unspecified
+
+# ---- 文献咨询审计（仅在用户启用时存在）----
+literature_consultation:
+  performed: true                      # false 时整个字段可省略其他子字段
+  performed_at: "2026-04-29T15:32:00Z"
+  user_consented: true                 # 必须为 true 才能执行联网查询
+  layers_used:                         # 按使用顺序记录三层 fallback
+    - layer: 1
+      strategy: "reuse local skills"
+      skills_invoked:
+        - {name: arxiv-database, n_queries: 2, n_results: 18}
+        - {name: perplexity-search, n_queries: 1, n_results: 5}
+    - layer: 2                         # 仅在 Layer 1 不足时存在
+      strategy: "external MCP / WebSearch fallback"
+      sources:
+        - {name: openalex-mcp, n_queries: 1, n_results: 12}
+    - layer: 3                         # 仅在 Layer 1+2 都不足时存在
+      strategy: "Claude internal knowledge"
+      confidence: medium               # 必须显式标记
+  total_queries: 4
+  total_papers_screened: 35
+  output_file: "intake/literature_recommendations.md"
+  papers_recommended: 9                # 最终入选展示给用户的数量
 ```
 
 ---
@@ -291,3 +322,5 @@ routing_recommendation:
 | `unresolved_decisions` | list | 全部 | 待决问题清单 |
 | `upstream_module` | string | 全部 | 上游模块名 |
 | `variables_constructed` | dict | 02 | 02 模块构造的所有变量及其公式 |
+| `research_context` | dict | 全部（可空） | 用户回答的 4 问，文献咨询查询用 |
+| `literature_consultation` | dict | 全部（可空） | 文献咨询审计字段；含 layers_used / 调用的 skill / 查询数 / 输出文件 |

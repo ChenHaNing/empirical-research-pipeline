@@ -1,6 +1,6 @@
 ---
 name: empirical-data-intake
-description: Empirical data intake for raw data triage in econometrics and public-health / epidemiology research. Use when the user has just received a raw dataset (.csv, .dta, .xlsx, .sav, .sas7bdat, .parquet) and does not yet know what cleaning is needed or which downstream pipeline — 00 StatsPAI / 00.1 Python / 00.2 Stata / 00.3 R — to route to. Runs a data-driven 5-slot conditional Q&A (discipline, research design, unit of observation, focal variables, software target), where slots that the data already answers are skipped or pre-filled, and slots that the data cannot answer are surfaced as multiple-choice questions. Executes the deterministic 80% of Step 1 cleaning that the four flagships' references treat as user-decided — column rename to snake_case, automatic dtype coercion for unambiguous cases, duplicate detection, primary-key validation, panel structure inference, missing-rate inventory, outlier flagging (flag only, not winsorize). Produces four output files — cleaned dataset in the Slot-5 native format (.dta / .parquet / .rds), an always-on `cleaned_dataset.xlsx` 7-sheet inspection workbook for visual spot-check, `data_contract.yaml` describing verified dataset properties, and `routing_recommendation.md` pointing to the correct flagship and mode. Holds the public-health / epidemiology cleaning patterns the four flagships' Step 1 references omit — index date / time-zero alignment, censoring vs missing distinction, person-time construction, washout periods, immortal-time-bias detection, ICD/CPT/ATC code normalization. Does NOT replicate flagship Step 1 — multiple imputation, advanced outlier methods, detailed merge mechanics, event-study time alignment all hand off to the matched flagship by reference. Triggers on phrases like "原始数据", "数据清洗", "不知道用哪个 pipeline", "怎么开始", "raw data", "data intake", "data triage", "data wrangling", "empirical data cleaning", "panel attrition", "cohort 数据", "index date", "public health data", "流行病学数据", ".dta 怎么处理", "this data is a mess".
+description: Empirical data intake for raw data triage in econometrics and public-health / epidemiology research. Use when the user has just received a raw dataset (.csv, .dta, .xlsx, .sav, .sas7bdat, .parquet) and does not yet know what cleaning is needed or which downstream pipeline — 00 StatsPAI / 00.1 Python / 00.2 Stata / 00.3 R — to route to. Runs a data-driven 5-slot conditional Q&A (discipline, research design, unit of observation, focal variables, software target), where slots that the data already answers are skipped or pre-filled, and slots that the data cannot answer are surfaced as multiple-choice questions. Executes the deterministic 80% of Step 1 cleaning that the four flagships' references treat as user-decided — column rename to snake_case, automatic dtype coercion for unambiguous cases, duplicate detection, primary-key validation, panel structure inference, missing-rate inventory, outlier flagging (flag only, not winsorize). Produces four output files — cleaned dataset in the Slot-5 native format (.dta / .parquet / .rds), an always-on `cleaned_dataset.xlsx` 7-sheet inspection workbook for visual spot-check, `data_contract.yaml` describing verified dataset properties, and `routing_recommendation.md` pointing to the correct flagship and mode. Holds the public-health / epidemiology cleaning patterns the four flagships' Step 1 references omit — index date / time-zero alignment, censoring vs missing distinction, person-time construction, washout periods, immortal-time-bias detection, ICD/CPT/ATC code normalization. Does NOT replicate flagship Step 1 — multiple imputation, advanced outlier methods, detailed merge mechanics, event-study time alignment all hand off to the matched flagship by reference. Optionally offers a literature-consultation phase that, with explicit user consent, searches academic sources (preferring local skills like arxiv-database / perplexity-search / systematic-literature-review when installed, falling back to OpenAlex / arXiv MCP / WebSearch) for methodological precedent on each unresolved_decisions item; the phase only writes a markdown advisory report and never modifies analysis data. Triggers on phrases like "原始数据", "数据清洗", "不知道用哪个 pipeline", "怎么开始", "raw data", "data intake", "data triage", "data wrangling", "empirical data cleaning", "panel attrition", "cohort 数据", "index date", "public health data", "流行病学数据", ".dta 怎么处理", "this data is a mess", "查文献怎么处理缺失", "literature consultation".
 license: CC BY-SA 4.0
 ---
 
@@ -345,6 +345,80 @@ These checks are **run automatically** when Slot 1 = epi; user is shown results,
 
 ---
 
+## Literature consultation (optional, runs after Mode A and before output)
+
+If `unresolved_decisions` is non-empty after the cleaning + Mode A checks complete, intake offers an optional **literature consultation** phase that produces a methodological-precedent report based on academic search.
+
+This phase is **always opt-in** (default off). It does not modify any data field — it only writes a markdown report and augments the contract with an audit trail.
+
+Full content in [`references/02-literature-consultation.md`](references/02-literature-consultation.md). Summary:
+
+### Trigger
+
+```
+if len(unresolved_decisions) > 0:
+    ask user: "I found {N} unresolved issues. Want me to search the literature for how others have handled these? [Y/N]"
+    if user replies Y:
+        run literature consultation phase
+```
+
+### 4-question research-context elicitation
+
+Before any literature query, ask the user 4 questions to make searches precise:
+
+1. **Research question** (one sentence) — required for non-trivial queries
+2. **Identification strategy** — TWFE / DID / IV / RDD / PSM / target_trial_emulation / descriptive / other
+3. **Key references already known** (1–5 papers) — optional but raises query quality 10x
+4. **Target journal tier** — top / mainstream / unspecified
+
+The answers go into `data_contract.yaml > research_context` and can be reused by downstream modules without re-asking.
+
+### Three-layer query strategy
+
+```
+Layer 1: scan ~/.claude/skills/ for usable lit-search skills
+   priority chain: systematic-literature-review → perplexity-search →
+                   arxiv-database / biorxiv-database → research-lookup → parallel-web
+   if any found, invoke them — STOP HERE if Layer 1 succeeds
+
+Layer 2: external MCP / Claude Code built-in tools
+   priority chain: OpenAlex MCP → arXiv MCP → WebSearch (built-in) → WebFetch
+   trigger: only when Layer 1 returns nothing usable
+
+Layer 3: Claude internal training knowledge (last-resort fallback)
+   trigger: only when both Layer 1 and Layer 2 are unavailable
+   confidence MUST be marked as `medium` or `low` in the output
+   MUST add explicit disclaimer to the report header
+```
+
+Each layer's invocation is logged to the contract.
+
+### Output
+
+`intake/literature_recommendations.md` — for each `unresolved_decisions` item, lists 3–5 relevant papers with:
+- Citation (author, year, journal)
+- Their approach
+- Why it's relevant to the user
+- Which downstream module should apply it
+- Paper-citation template ready to paste into the user's manuscript
+
+### Contract integration
+
+Two fields are added to `data_contract.yaml`:
+
+- `research_context` — the 4 user answers (downstream modules read this to avoid re-asking)
+- `literature_consultation` — full audit trail (timestamps, query strings, layers used, skills invoked, paper counts)
+
+### Invariants for this phase
+
+1. Never modifies any data field — only writes markdown + augments yaml
+2. Never triggers without explicit user consent
+3. Always logs every external call (skill / MCP / WebSearch invocation, query string, return count)
+4. Layer 3 outputs MUST carry `confidence: medium|low` and a disclaimer
+5. Reproducibility preserved: same original data + same 4 answers → same query strings (specific returns will vary as web resources update, but the query plan is reproducible)
+
+---
+
 ## Output artifacts (the contract)
 
 Write three files to the user's working directory under `intake/`:
@@ -528,8 +602,9 @@ When this skill is invoked:
    - **One question per turn** — never batch unrelated slots
 4. **Execute the 80%** auto-cleaning pipeline. Print `[intake]` log lines for every row drop.
 5. **Run Mode A checks** if Slot 1 = epi.
-6. **Write four output files** to `<parent>/intake/`. Show the user the file paths. The four files are: `cleaned_dataset.{dta|parquet|rds}`, `cleaned_dataset.xlsx` (always), `data_contract.yaml`, `routing_recommendation.md`.
-7. **Print the routing message** ("now invoke flagship 00.X — see `intake/routing_recommendation.md`").
+6. **Offer literature consultation** if `unresolved_decisions` is non-empty. Ask the user [Y/N]; if Y, run the 4-question research-context elicitation, then the three-layer query strategy. Write `intake/literature_recommendations.md` and augment the contract with `research_context` and `literature_consultation` fields. Skip silently if user declines or `unresolved_decisions` is empty.
+7. **Write the four data-output files** to `<parent>/intake/`. Show the user the file paths. The four files are: `cleaned_dataset.{dta|parquet|rds}`, `cleaned_dataset.xlsx` (always), `data_contract.yaml`, `routing_recommendation.md`. (If literature consultation ran, a fifth file `literature_recommendations.md` will also exist.)
+8. **Print the routing message** ("now invoke flagship 00.X — see `intake/routing_recommendation.md`").
 
 Never:
 - Silently drop rows (always print count + reason)
@@ -557,6 +632,14 @@ If any column fails, append a numeric suffix (`col_1`, `col_2`) and log the chan
 
 ## Version
 
+- **v0.3** (2026-04-29) — Adds optional literature consultation phase:
+  - New phase between Mode A and Output: opt-in literature search for `unresolved_decisions`.
+  - 4-question research-context elicitation (research_question / identification_strategy / key_references_known / target_journal_tier) written to `data_contract.yaml > research_context` for downstream module reuse.
+  - Three-layer query fallback: local skills → external MCP/WebSearch → Claude internal knowledge.
+  - New file `intake/literature_recommendations.md` produced when phase runs.
+  - New contract field `literature_consultation` for full audit (timestamps, query strings, skills invoked, paper counts, layer used).
+  - Refines architecture Principle 4: networking allowed for informational queries (literature, BibTeX, docs); still forbidden for any data that affects the analysis dataset or estimates.
+  - See [`references/02-literature-consultation.md`](references/02-literature-consultation.md) for the full design.
 - **v0.2** (2026-04-29) — Bug-fix release after first real-data test:
   - `cleaned_dataset.xlsx` 7-sheet inspection workbook now always written (in addition to Slot-5 native format).
   - Inspection code rewritten as `inspect_file()` function — fixes `path` undefined bug.
