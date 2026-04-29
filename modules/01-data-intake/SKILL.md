@@ -1,6 +1,6 @@
 ---
 name: empirical-data-intake
-description: Empirical data intake for raw data triage in econometrics and public-health / epidemiology research. Use when the user has just received a raw dataset (.csv, .dta, .xlsx, .sav, .sas7bdat, .parquet) and does not yet know what cleaning is needed or which downstream pipeline — 00 StatsPAI / 00.1 Python / 00.2 Stata / 00.3 R — to route to. Runs a data-driven 5-slot conditional Q&A (discipline, research design, unit of observation, focal variables, software target), where slots that the data already answers are skipped or pre-filled, and slots that the data cannot answer are surfaced as multiple-choice questions. Executes the deterministic 80% of Step 1 cleaning that the four flagships' references treat as user-decided — column rename to snake_case, automatic dtype coercion for unambiguous cases, duplicate detection, primary-key validation, panel structure inference, missing-rate inventory, outlier flagging (flag only, not winsorize). Produces four output files — cleaned dataset in the Slot-5 native format (.dta / .parquet / .rds), an always-on `cleaned_dataset.xlsx` 7-sheet inspection workbook for visual spot-check, `data_contract.yaml` describing verified dataset properties, and `routing_recommendation.md` pointing to the correct flagship and mode. Holds the public-health / epidemiology cleaning patterns the four flagships' Step 1 references omit — index date / time-zero alignment, censoring vs missing distinction, person-time construction, washout periods, immortal-time-bias detection, ICD/CPT/ATC code normalization. Does NOT replicate flagship Step 1 — multiple imputation, advanced outlier methods, detailed merge mechanics, event-study time alignment all hand off to the matched flagship by reference. Optionally offers a literature-consultation phase that, with explicit user consent, searches academic sources (preferring local skills like arxiv-database / perplexity-search / systematic-literature-review when installed, falling back to OpenAlex / arXiv MCP / WebSearch) for methodological precedent on each unresolved_decisions item; the phase only writes a markdown advisory report and never modifies analysis data. Triggers on phrases like "原始数据", "数据清洗", "不知道用哪个 pipeline", "怎么开始", "raw data", "data intake", "data triage", "data wrangling", "empirical data cleaning", "panel attrition", "cohort 数据", "index date", "public health data", "流行病学数据", ".dta 怎么处理", "this data is a mess", "查文献怎么处理缺失", "literature consultation".
+description: Empirical data intake for raw data triage in econometrics and public-health / epidemiology research. Use when the user has just received a raw dataset (.csv, .dta, .xlsx, .sav, .sas7bdat, .parquet) and does not yet know what cleaning is needed or which downstream pipeline — 00 StatsPAI / 00.1 Python / 00.2 Stata / 00.3 R — to route to. Runs a data-driven 5-slot conditional Q&A (discipline, research design, unit of observation, focal variables, software target), where slots that the data already answers are skipped or pre-filled, and slots that the data cannot answer are surfaced as multiple-choice questions. Executes the deterministic 80% of Step 1 cleaning that the four flagships' references treat as user-decided — column rename to snake_case, automatic dtype coercion for unambiguous cases, duplicate detection, primary-key validation, panel structure inference, missing-rate inventory, outlier flagging (flag only, not winsorize). Concludes with a built-in deterministic data evaluation phase that grades the cleaned dataset against 23 pure-rule checks (10 strengths + 13 optimization rules) and produces a strengths / optimizations / overall-grade markdown report — entirely from internal metrics, no networking, no external models. Produces five output files — cleaned dataset in the Slot-5 native format (.dta / .parquet / .rds), an always-on `cleaned_dataset.xlsx` 7-sheet inspection workbook for visual spot-check, `data_contract.yaml` describing verified dataset properties, `routing_recommendation.md` pointing to the correct flagship and mode, and `data_evaluation.md` with the strengths / risks / verdict report. Holds the public-health / epidemiology cleaning patterns the four flagships' Step 1 references omit — index date / time-zero alignment, censoring vs missing distinction, person-time construction, washout periods, immortal-time-bias detection, ICD/CPT/ATC code normalization. Does NOT replicate flagship Step 1 — multiple imputation, advanced outlier methods, detailed merge mechanics, event-study time alignment all hand off to the matched flagship by reference. Triggers on phrases like "原始数据", "数据清洗", "不知道用哪个 pipeline", "怎么开始", "raw data", "data intake", "data triage", "data wrangling", "empirical data cleaning", "panel attrition", "cohort 数据", "index date", "public health data", "流行病学数据", ".dta 怎么处理", "this data is a mess", "数据质量评价", "data evaluation".
 license: CC BY-SA 4.0
 ---
 
@@ -345,83 +345,77 @@ These checks are **run automatically** when Slot 1 = epi; user is shown results,
 
 ---
 
-## Literature consultation (optional, runs after Mode A and before output)
+## Data evaluation (always runs after Mode A, before output)
 
-If `unresolved_decisions` is non-empty after the cleaning + Mode A checks complete, intake offers an optional **literature consultation** phase that produces a methodological-precedent report based on academic search.
+Once the 80% mechanical cleaning (and Mode A checks if applicable) finish, intake **always** runs a built-in data evaluation phase that grades the cleaned dataset against a fixed rule library. The phase is **not opt-in** — it is part of intake's standard output.
 
-This phase is **always opt-in** (default off). It does not modify any data field — it only writes a markdown report and augments the contract with an audit trail.
+Full content in [`references/02-data-evaluation.md`](references/02-data-evaluation.md). Summary:
 
-Full content in [`references/02-literature-consultation.md`](references/02-literature-consultation.md). Summary:
+### Hard constraints
 
-### Trigger
+- **Zero external dependencies**: no networking, no external skill calls, no LLM calls, no MCPs. Pure Python rule engine over the metrics intake already computed.
+- **Fully deterministic**: same input contract → same evaluation. Reproducibility is preserved by construction.
+- **Read-only on data**: only writes a markdown report and augments the contract with an audit field. Never modifies any data column.
 
-```
-if len(unresolved_decisions) > 0:
-    ask user: "I found {N} unresolved issues. Want me to search the literature for how others have handled these? [Y/N]"
-    if user replies Y:
-        run literature consultation phase
-```
+### What it produces
 
-### 4-question research-context elicitation
+`intake/data_evaluation.md` — a structured markdown report with three sections:
 
-Before any literature query, ask the user 4 questions to make searches precise:
+1. **数据表现好的地方 (Strengths)** — positive signals about the dataset (balanced panel, unique pkey, focal vars clean, sufficient sample, etc.)
+2. **需要完善和优化的地方 (Optimizations)** — risks that affect downstream analysis (non-MCAR missingness, severe outliers, multicollinearity, counter-intuitive correlations, sample imbalance, etc.), sorted by severity (critical / high / medium / low)
+3. **综合评价 (Overall Verdict)** — a letter grade (A / A- / B+ / B / B- / C+ / C) with a 2-4 paragraph summary that answers: how solid is this data, what must be fixed before flagship, what to discuss in the methods section, and what journal tier this data quality can target
 
-1. **Research question** (one sentence) — required for non-trivial queries
-2. **Identification strategy** — TWFE / DID / IV / RDD / PSM / target_trial_emulation / descriptive / other
-3. **Key references already known** (1–5 papers) — optional but raises query quality 10x
-4. **Target journal tier** — top / mainstream / unspecified
+### Rule library
 
-The answers go into `data_contract.yaml > research_context` and can be reused by downstream modules without re-asking.
+23 rules total: **10 strength rules + 13 optimization rules**. Each rule is a deterministic check on the contract dict (e.g. `panel_structure.balanced == True`, `mcar_hint contains "NOT MCAR"`, `|cor(outcome, main_x)| < 0.10`). Every triggered rule outputs concrete evidence (numbers, column names, ratios) — no vague "looks bad" messages.
 
-### Three-layer query strategy
+### Grading logic
 
 ```
-Layer 1: scan ~/.claude/skills/ for usable lit-search skills
-   priority chain: systematic-literature-review → perplexity-search →
-                   arxiv-database / biorxiv-database → research-lookup → parallel-web
-   if any found, invoke them — STOP HERE if Layer 1 succeeds
+strengths_count, optims_count, n_critical, n_high, ...
 
-Layer 2: external MCP / Claude Code built-in tools
-   priority chain: OpenAlex MCP → arXiv MCP → WebSearch (built-in) → WebFetch
-   trigger: only when Layer 1 returns nothing usable
-
-Layer 3: Claude internal training knowledge (last-resort fallback)
-   trigger: only when both Layer 1 and Layer 2 are unavailable
-   confidence MUST be marked as `medium` or `low` in the output
-   MUST add explicit disclaimer to the report header
+if n_critical >= 3: grade = "C"
+elif n_critical >= 1 and strengths_count < 3: grade = "C+"
+elif strengths_count >= 7 and optims_count <= 2 and n_critical == 0: grade = "A"
+elif strengths_count >= 6 and n_high <= 2 and n_critical == 0: grade = "A-"
+elif strengths_count >= 5 and (n_high + n_critical) <= 4: grade = "B+"
+elif strengths_count >= 3 and optims_count <= 6 and n_critical <= 2: grade = "B"
+else: grade = "B-"
 ```
-
-Each layer's invocation is logged to the contract.
-
-### Output
-
-`intake/literature_recommendations.md` — for each `unresolved_decisions` item, lists 3–5 relevant papers with:
-- Citation (author, year, journal)
-- Their approach
-- Why it's relevant to the user
-- Which downstream module should apply it
-- Paper-citation template ready to paste into the user's manuscript
 
 ### Contract integration
 
-Two fields are added to `data_contract.yaml`:
+A new top-level field `data_evaluation` is added to `data_contract.yaml`:
 
-- `research_context` — the 4 user answers (downstream modules read this to avoid re-asking)
-- `literature_consultation` — full audit trail (timestamps, query strings, layers used, skills invoked, paper counts)
+```yaml
+data_evaluation:
+  generated_at: "2026-04-29T15:32:00Z"
+  output_file: "intake/data_evaluation.md"
+  grade: "B+"
+  n_strengths_triggered: 8
+  n_optimizations_triggered: 6
+  n_critical: 1
+  n_high: 2
+  n_medium: 2
+  n_low: 1
+  rules_triggered: { strengths: [...], optimizations: [{rule: ..., severity: ..., target: ...}, ...] }
+```
 
-### Invariants for this phase
+Downstream modules can read this field to gate their own behavior (e.g., a paper-writing module can refuse to draft a methods section until grade is at least B+).
 
-1. Never modifies any data field — only writes markdown + augments yaml
-2. Never triggers without explicit user consent
-3. Always logs every external call (skill / MCP / WebSearch invocation, query string, return count)
-4. Layer 3 outputs MUST carry `confidence: medium|low` and a disclaimer
-5. Reproducibility preserved: same original data + same 4 answers → same query strings (specific returns will vary as web resources update, but the query plan is reproducible)
+### Invariants
+
+1. Always runs (unless the user explicitly disables with `--no-evaluation`)
+2. Never networks, never calls external models, never invokes other skills
+3. Same contract input → same evaluation output (full determinism)
+4. Every triggered rule must include concrete evidence in the rendered message
+5. Grade is a function of strengths and optimization severity, not just counts
 
 ---
 
 ## Output artifacts (the contract)
 
-Write four files to the user's working directory under `intake/` (a fifth file is added when the optional literature consultation phase runs):
+Write five files to the user's working directory under `intake/`:
 
 ### 1. `intake/cleaned_dataset.{dta|parquet|rds}` + `intake/cleaned_dataset.xlsx` (always)
 
@@ -540,22 +534,22 @@ unresolved_decisions:                                 # human-readable list, sur
   - "tenure has 8% missingness and NOT MCAR — use MI in flagship Step 1.5"
   - "Survey weights not detected; declare in flagship before regression if applicable"
 
-# v0.3+ — present only when the user opted into literature consultation
-research_context:                                     # see contract-spec.md §2 for full field semantics
-  research_question: "..."
-  identification_strategy: TWFE
-  key_references_known: ["Author (Year)"]
-  target_journal_tier: mainstream
-
-literature_consultation:                              # see contract-spec.md §2 for full audit-field semantics
-  performed: true
-  performed_at: "2026-04-29T15:32:00Z"
-  user_consented: true
-  layers_used: [{layer: 1, strategy: "reuse local skills", skills_invoked: [...]}]
-  total_queries: 4
-  total_papers_screened: 35
-  output_file: "intake/literature_recommendations.md"
-  papers_recommended: 9
+# v0.3 — always present (data evaluation runs every time)
+data_evaluation:                                      # see contract-spec.md and references/02-data-evaluation.md for full semantics
+  generated_at: "2026-04-29T15:32:00Z"
+  output_file: "intake/data_evaluation.md"
+  grade: "B+"
+  n_strengths_triggered: 8
+  n_optimizations_triggered: 6
+  n_critical: 1
+  n_high: 2
+  n_medium: 2
+  n_low: 1
+  rules_triggered:
+    strengths:  [balanced_panel, unique_pkey, clean_focal_vars, ...]
+    optimizations:
+      - {rule: not_mcar_alt_outcome, severity: high, target: entropy_idx}
+      - {rule: pgdp_dominates_x, severity: medium}
 
 routing_recommendation:
   flagship: "00.2-Full-empirical-analysis-skill_Stata"
@@ -570,8 +564,9 @@ routing_recommendation:
 - If `discipline == "epi"`, `epi_checks` block MUST be present
 - If `software_target == "stata"`, all column names in `renames_applied.values()` MUST be ASCII and ≤32 chars (Stata variable name limit)
 - `missing_pattern` only includes columns with non-zero missing rate (zero-missing cols are omitted to keep the contract small)
-- If `literature_consultation.performed == true`, `literature_consultation.user_consented` MUST also be true (no covert networking)
-- If `literature_consultation.layers_used[*].layer == 3`, the corresponding output file MUST carry an explicit "LLM-inferred, please verify" disclaimer in its header
+- `data_evaluation` MUST always be present in v0.3+ contracts (unless intake was invoked with `--no-evaluation`)
+- `data_evaluation.grade` MUST be one of: `A | A- | B+ | B | B- | C+ | C` (no other values allowed)
+- The triggered rules in `data_evaluation.rules_triggered` MUST be deterministic given the contract — same input → same triggered set
 
 ### 3. `intake/routing_recommendation.md`
 
@@ -605,35 +600,49 @@ You should now invoke flagship: **00.2 Stata** (mode: default).
 - Survey weights not detected — if applicable, declare before regression.
 ```
 
-### 4. `intake/literature_recommendations.md` (optional, only when literature consultation runs)
+### 4. `intake/data_evaluation.md`
 
-This file is produced **only** when the optional literature consultation phase is invoked (see "Literature consultation" section above). When it exists, it serves as a methodological-precedent advisory report — never a data file.
+Produced on every run. Markdown report with three sections — strengths, optimizations (sorted critical → high → medium → low), and an overall letter-grade verdict with a 2–4 paragraph summary. Rendered deterministically from the rule engine described above.
 
-Required header structure:
+Required structure:
 
 ```markdown
-# 文献咨询报告
+# 数据评价报告
 
 **生成时间**: <ISO-8601 UTC>
-**研究主题**: <user's answer to question 1>
-**识别策略**: <user's answer to question 2>
-**期刊定位**: <user's answer to question 4>
-**查询源**: Layer <N> (<details of which skills/MCPs invoked>)
-**总文献筛选**: <X> 篇 → 入选: <Y> 篇
+**数据**: <source_file> (<sheet>, <n_rows> 行 × <n_cols> 列, <n_units> 单位 × <n_periods> 期)
+**研究设计**: <research_design> | <discipline> | <unit_of_observation>
 
-[For each unresolved_decisions item, list 3-5 papers with citation,
- approach, relevance, applicability to a downstream module, and a
- paper-citation template ready to paste into the user's manuscript.]
+## 一、数据表现好的地方
+1. **<strength rule name>**: <evidence-bearing message>
+...
 
-## 文献咨询审计
-[Full query log: each query string, layer used, source invoked, return count]
+## 二、需要完善和优化的地方
 
-## Disclaimer
-[Required disclaimer about user verifying citations and making final
- research-design decisions]
+### 关键问题（必须处理）
+<critical-severity items>
+
+### 重要问题（强烈建议处理）
+<high-severity items>
+
+### 一般问题（论文写作时讨论）
+<medium- and low-severity items>
+
+## 三、综合评价
+
+**评级**: <A / A- / B+ / B / B- / C+ / C>
+
+<2-4 paragraphs answering: solid base? what must be fixed?
+ what to discuss in methods? recommended journal tier?>
 ```
 
-When Layer 3 (Claude internal knowledge) is the only source used, the disclaimer MUST explicitly say so and warn the user to verify citation existence. See `references/02-literature-consultation.md` for the full output specification.
+Each rule's rendered line MUST contain concrete evidence (a number, a column name, a ratio) — no "looks bad" or other vague claims.
+
+### 5. (Mode A only) `intake/epi_checks_report.md`
+
+For Mode A (epi) runs, an additional human-readable report summarizing the 7 epi-specific checks (index date validation, time-zero alignment, censoring vs missing, person-time, washout, code normalization, immortal-time-bias screen). The structured outcomes are already inside `data_contract.yaml > epi_checks`; this file is the readable companion.
+
+For econ (default) runs, this file does not exist.
 
 ---
 
@@ -651,9 +660,9 @@ When this skill is invoked:
    - **One question per turn** — never batch unrelated slots
 4. **Execute the 80%** auto-cleaning pipeline. Print `[intake]` log lines for every row drop.
 5. **Run Mode A checks** if Slot 1 = epi.
-6. **Offer literature consultation** if `unresolved_decisions` is non-empty. Ask the user [Y/N]; if Y, run the 4-question research-context elicitation, then the three-layer query strategy. Write `intake/literature_recommendations.md` and augment the contract with `research_context` and `literature_consultation` fields. Skip silently if user declines or `unresolved_decisions` is empty.
-7. **Write the four data-output files** to `<parent>/intake/`. Show the user the file paths. The four files are: `cleaned_dataset.{dta|parquet|rds}`, `cleaned_dataset.xlsx` (always), `data_contract.yaml`, `routing_recommendation.md`. (If literature consultation ran, a fifth file `literature_recommendations.md` will also exist.)
-8. **Print the routing message** ("now invoke flagship 00.X — see `intake/routing_recommendation.md`").
+6. **Run data evaluation** on the in-memory contract. Execute all 23 rules (10 strengths + 13 optimizations), compute the grade, render `intake/data_evaluation.md`, and augment the contract with the `data_evaluation` audit field. This step always runs; it does not call any external tool, network, or model.
+7. **Write the five output files** to `<parent>/intake/`. Show the user the file paths. The files are: `cleaned_dataset.{dta|parquet|rds}`, `cleaned_dataset.xlsx` (always), `data_contract.yaml`, `routing_recommendation.md`, and `data_evaluation.md`. Mode A runs additionally produce `epi_checks_report.md`.
+8. **Print the routing message** ("now invoke flagship 00.X — see `intake/routing_recommendation.md`") and the **one-line evaluation summary** ("Data evaluation grade: B+ — see `intake/data_evaluation.md` for details").
 
 Never:
 - Silently drop rows (always print count + reason)
@@ -681,14 +690,15 @@ If any column fails, append a numeric suffix (`col_1`, `col_2`) and log the chan
 
 ## Version
 
-- **v0.3** (2026-04-29) — Adds optional literature consultation phase:
-  - New phase between Mode A and Output: opt-in literature search for `unresolved_decisions`.
-  - 4-question research-context elicitation (research_question / identification_strategy / key_references_known / target_journal_tier) written to `data_contract.yaml > research_context` for downstream module reuse.
-  - Three-layer query fallback: local skills → external MCP/WebSearch → Claude internal knowledge.
-  - New file `intake/literature_recommendations.md` produced when phase runs.
-  - New contract field `literature_consultation` for full audit (timestamps, query strings, skills invoked, paper counts, layer used).
-  - Refines architecture Principle 4: networking allowed for informational queries (literature, BibTeX, docs); still forbidden for any data that affects the analysis dataset or estimates.
-  - See [`references/02-literature-consultation.md`](references/02-literature-consultation.md) for the full design.
+- **v0.3** (2026-04-29) — Adds always-on data evaluation phase:
+  - New phase between Mode A and Output: deterministic rule-engine evaluation of the cleaned dataset.
+  - 23 rules total (10 strengths + 13 optimizations), each with concrete evidence rendering and a severity label (critical / high / medium / low) for optimizations.
+  - Letter-grade verdict (A / A- / B+ / B / B- / C+ / C) computed from a fixed function of strengths and optimization severity.
+  - New output file `intake/data_evaluation.md` (5th file alongside the 4 v0.2 outputs).
+  - New contract field `data_evaluation` recording grade, triggered rules, and severity counts — readable by downstream modules.
+  - **Zero external dependencies**: no networking, no LLM calls, no MCP, no calls to other skills. Pure Python over already-computed metrics. Reproducibility 100%.
+  - See [`references/02-data-evaluation.md`](references/02-data-evaluation.md) for the full rule library and grading function.
+  - Earlier v0.3 work-in-progress (literature consultation, opt-in academic search) was rolled back in favor of this self-contained design — researchers asked for a direct evaluation rather than an external advisory layer.
 - **v0.2** (2026-04-29) — Bug-fix release after first real-data test:
   - `cleaned_dataset.xlsx` 7-sheet inspection workbook now always written (in addition to Slot-5 native format).
   - Inspection code rewritten as `inspect_file()` function — fixes `path` undefined bug.

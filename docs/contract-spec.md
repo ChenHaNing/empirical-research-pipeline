@@ -48,36 +48,34 @@ routing_recommendation:
   reason: "..."
   next_step_in_module: "..."           # 在下游模块里该跑哪一步
 
-# ---- 研究上下文（用户在文献咨询前回答的 4 问；也可被下游模块复用）----
-research_context:                      # 可空 — 只在用户启用文献咨询时填写
-  research_question: "..."             # 一句话研究命题
-  identification_strategy: TWFE        # TWFE | DID | IV | RDD | PSM | target_trial_emulation | descriptive | other
-  key_references_known:                # 用户列的 1-5 篇关键文献，可空
-    - "Author (Year), Journal"
-  target_journal_tier: mainstream      # top | mainstream | unspecified
-
-# ---- 文献咨询审计（仅在用户启用时存在）----
-literature_consultation:
-  performed: true                      # false 时整个字段可省略其他子字段
-  performed_at: "2026-04-29T15:32:00Z"
-  user_consented: true                 # 必须为 true 才能执行联网查询
-  layers_used:                         # 按使用顺序记录三层 fallback
-    - layer: 1
-      strategy: "reuse local skills"
-      skills_invoked:
-        - {name: arxiv-database, n_queries: 2, n_results: 18}
-        - {name: perplexity-search, n_queries: 1, n_results: 5}
-    - layer: 2                         # 仅在 Layer 1 不足时存在
-      strategy: "external MCP / WebSearch fallback"
-      sources:
-        - {name: openalex-mcp, n_queries: 1, n_results: 12}
-    - layer: 3                         # 仅在 Layer 1+2 都不足时存在
-      strategy: "Claude internal knowledge"
-      confidence: medium               # 必须显式标记
-  total_queries: 4
-  total_papers_screened: 35
-  output_file: "intake/literature_recommendations.md"
-  papers_recommended: 9                # 最终入选展示给用户的数量
+# ---- 数据评价审计（v0.3+ 总是存在，除非启用 --no-evaluation）----
+data_evaluation:
+  generated_at: "2026-04-29T15:32:00Z"
+  output_file: "intake/data_evaluation.md"
+  grade: "B+"                          # A | A- | B+ | B | B- | C+ | C
+  n_strengths_triggered: 8
+  n_optimizations_triggered: 6
+  n_critical: 1
+  n_high: 2
+  n_medium: 2
+  n_low: 1
+  rules_triggered:
+    strengths:                         # 已触发的 strength 规则名（来自 10 条规则库）
+      - balanced_panel
+      - unique_pkey
+      - clean_focal_vars
+      - mostly_clean_columns
+      - multi_year_panel
+      - multiple_heterogeneity
+      - strong_main_relationship
+      - sufficient_sample
+    optimizations:                     # 已触发的 optimization 规则（来自 13 条规则库）
+      - {rule: not_mcar_alt_outcome, severity: high, target: entropy_idx, evidence: "|t|=2.81 on `ind`"}
+      - {rule: pgdp_dominates_x, severity: medium, evidence: "cor(Y, pgdp)=0.63 > cor(Y, X)=0.58"}
+      - {rule: counterintuitive_correlation, severity: medium, target: edu, evidence: "cor(Y, edu)=0.009"}
+      - {rule: right_skewed_outcome, severity: medium, target: y, evidence: "SD/Mean=1.75"}
+      - {rule: single_unit_missing_pattern, severity: medium, target: "常德市 (id=127)", evidence: "10/10 rows missing on 3 typology cols"}
+      - {rule: categorical_level_mismatch, severity: low, target: city_cluster, evidence: "6 levels vs 5 in codebook"}
 ```
 
 ---
@@ -322,5 +320,4 @@ routing_recommendation:
 | `unresolved_decisions` | list | 全部 | 待决问题清单 |
 | `upstream_module` | string | 全部 | 上游模块名 |
 | `variables_constructed` | dict | 02 | 02 模块构造的所有变量及其公式 |
-| `research_context` | dict | 全部（可空） | 用户回答的 4 问，文献咨询查询用 |
-| `literature_consultation` | dict | 全部（可空） | 文献咨询审计字段；含 layers_used / 调用的 skill / 查询数 / 输出文件 |
+| `data_evaluation` | dict | 全部 | 数据评价审计字段；含 grade / n_strengths_triggered / 触发的规则集 / 严重度统计 |

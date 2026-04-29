@@ -45,7 +45,7 @@
 1. **独立可运行** —— 不依赖其他模块的内部状态；只依赖前一模块写出的合同文件
 2. **机械操作 vs 设计判断严格分离** —— 凡是涉及研究设计决策（阈值选择、识别策略、估计方法）都不替用户做，而是显式问用户或写入 `unresolved_decisions` 字段
 3. **输出永远包含合同** —— 每个模块写出的 `data_contract.yaml` 是下游模块的唯一接口
-4. **不抓取分析数据，但允许信息性查询** —— 模块禁止从网上拿任何会进入数据集或影响估计的内容（保证可复现性）；但允许联网做信息性查询（文献元数据、API 文档、方法学建议），且优先复用本机已装的辅助 skill
+4. **模块自主运行不联网、不调外部模型** —— 任何外部依赖（网络、LLM、其他 skill）都会让今天跑和明年跑结果不同；模块只用自己已经算好的指标做判断。需要外部信息时只产生指针写入 `unresolved_decisions`，由研究者离开 skill 自行查询
 5. **学科双轨** —— 默认轨适用于经济学 / 计量 / 金融 / 政治学等社科研究；Mode A 轨适用于公共卫生 / 流行病学 / 临床研究
 
 ---
@@ -62,7 +62,7 @@
 
 | 模块 | 状态 | 说明 |
 |---|---|---|
-| [01-data-intake](modules/01-data-intake/) | **[Released v0.3]** | 原始数据 → analysis-ready 数据集 + 数据合同 + 路由建议 + 可选文献咨询 |
+| [01-data-intake](modules/01-data-intake/) | **[Released v0.3]** | 原始数据 → analysis-ready 数据集 + 数据合同 + 路由建议 + 数据评价报告（含强项 / 优化项 / 综合评级）|
 | [02-variable-construction](modules/02-variable-construction/) | [Planned] | 变量构造与变换：取对数 / winsorize / 一阶差分 / 哑变量 / 交互项 |
 
 ### 阶段 II：描述与诊断
@@ -285,7 +285,7 @@ pipeline 自动串联：
 
 仅含 `01-data-intake` 模块（v0.3）。pipeline 框架（契约规范、安装脚本、文档结构）就位，等待陆续加入 02-10 模块。
 
-`01-data-intake` v0.3 在 v0.2 基础上新增**可选的文献咨询阶段**——遇到 `unresolved_decisions` 时可让 skill 帮你查文献给方法学建议（详见 [`modules/01-data-intake/references/02-literature-consultation.md`](modules/01-data-intake/references/02-literature-consultation.md)）。架构 Principle 4 同步精化：禁止抓取分析数据，但允许信息性查询。
+`01-data-intake` v0.3 在 v0.2 基础上新增**总是运行的数据评价阶段**——清洗结束后用 23 条确定性规则（10 strength + 13 optimization）对数据打分，给出 A/B/C 评级 + 强项/弱项/综合评语，写入 `intake/data_evaluation.md`（详见 [`modules/01-data-intake/references/02-data-evaluation.md`](modules/01-data-intake/references/02-data-evaluation.md)）。**全程不联网、不调外部模型**，可复现性 100%。架构 Principle 4 同步收紧到严格版本。
 
 ### Roadmap
 

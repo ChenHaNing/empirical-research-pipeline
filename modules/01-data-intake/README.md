@@ -135,56 +135,45 @@ skill 自动接管，先静默地读一遍数据，然后开始问你问题。
 
 ---
 
-## 7. 文献咨询（可选，给 unresolved_decisions 找方法学建议）
+## 7. 数据评价（清洗结束后总会跑）
 
-如果 80% 自动清洗跑完之后 `unresolved_decisions` 列表非空（绝大多数真实数据都会有几条），skill 会**询问**你要不要进入文献咨询阶段。**默认关闭**，要你显式同意才开。
+80% 机械清洗（以及 Mode A 检查，如果适用）完成之后，skill 会**自动**对你这份数据做一次评价。**这一步永远跑**，不是 opt-in，因为它的目标就是直接告诉你：你这份数据现在好不好用、差在哪里。
 
-### 它做什么
+### 它产出什么
 
-针对每个未决问题（如"`tenure` 8% 非 MCAR 缺失，需要 MICE"），帮你找：
+一份 `intake/data_evaluation.md`，三块内容：
 
-- 类似情境下别人是怎么处理的（顶刊 / 主流期刊 / 国内 C 刊各自惯例）
-- 可直接引用的方法学文献（含 BibTeX）
-- 论文脚注的可粘贴模板
+1. **数据表现好的地方** —— 平衡面板、主键唯一、焦点变量零缺失、样本量充足、相关信号强等正面信号汇总
+2. **需要完善和优化的地方** —— 按严重度（关键 / 重要 / 一般）分组列出风险信号：非随机缺失、严重异常值、多重共线、反直觉相关、样本不平衡等
+3. **综合评价** —— 一个 A / A- / B+ / B / B- / C+ / C 的评级 + 2-4 段评语，告诉你：基础扎不扎实、必须先解决什么、写论文方法部分要讨论哪些点、能冲什么级别的期刊
 
-输出一份 `intake/literature_recommendations.md` 报告，**不修改任何数据**。你读完决定要不要采纳。
+### 怎么算的
 
-### 启用前先问你 4 题
+23 条确定性规则：**10 条 strength + 13 条 optimization**，全部基于 intake 已经算出来的指标（行数、缺失率、相关系数、outlier 数、面板覆盖率等）。
 
-为了让查询精准，开始查之前先问：
+每条规则要么命中、要么不命中——**没有任何模糊判断**。命中后渲染消息时必须带具体证据（"X 列缺失 6.09%"、"cor(Y, X) = 0.58"），不允许"看起来不太好"这种泛泛的话。
 
-1. 你这个研究的核心命题是？（一句话）
-2. 主识别策略？（TWFE / DID / IV / RDD / PSM / 队列 / 描述性）
-3. 已读过的关键文献？（可选，1-5 篇）
-4. 期刊定位？（顶刊 / 主流 / 不确定）
-
-答完写入 `data_contract.yaml > research_context`，**下游模块可复用**——不用每个模块都重复这 4 题。
-
-### 三层 fallback 查询
+最终评级由命中规则数 + 严重度严格决定：
 
 ```
-Layer 1 优先：复用本机 ~/.claude/skills/ 里已装的辅助 skill
-  - systematic-literature-review / perplexity-search /
-    arxiv-database / biorxiv-database / research-lookup /
-    parallel-web / citation-management / pyzotero
-
-Layer 2 兜底：外部 MCP 与 Claude Code 内置工具
-  - OpenAlex MCP / arXiv MCP / WebSearch / WebFetch
-
-Layer 3 最后兜底：Claude 训练知识
-  - 仅在前两层都不可用时启用，标 confidence: medium 并附 disclaimer
+n_critical >= 3                     → C
+strengths >= 7, optims <= 2         → A
+strengths >= 6, n_high <= 2         → A-
+strengths >= 5, (n_high+n_crit) <=4 → B+
+strengths >= 3, optims <= 6         → B
+其他                                → B- / C+
 ```
 
-每一层只在前一层不够用时才触发。整个过程写入合同的 `literature_consultation` 字段做完整审计（时间戳、查询字符串、调用的 skill / MCP、返回数）。
+### 强约束（与文献咨询的本质区别）
 
-### 重要约束
+数据评价**不联网、不调外部模型、不调 LLM、不调其他 skill**——纯 Python 规则引擎运行在 intake 内部。这意味着：
 
-- **永远不修改数据字段** —— 只产生 markdown 建议
-- **永远经你显式同意** —— 默认关闭
-- **可复现性保留** —— 同一份原始数据 + 同一组 4 问回答 = 同一组查询字符串
-- **离线时跳过** —— 没网就到 Layer 3，或干脆不启用
+- **可复现性 100%** —— 同一份合同永远产生同一份评价
+- **离线可跑** —— 没网也能用
+- **完全可审计** —— 每条触发的规则在合同 `data_evaluation.rules_triggered` 里都有记录
+- **无幻觉风险** —— 不调 LLM 就不会出现编造的"建议"
 
-详见 [`references/02-literature-consultation.md`](references/02-literature-consultation.md)。
+详细规则库 + 输出格式见 [`references/02-data-evaluation.md`](references/02-data-evaluation.md)。
 
 ---
 
@@ -257,12 +246,13 @@ Layer 3 最后兜底：Claude 训练知识
 
 ### v0.3（当前版本，2026-04-29）
 
-新增**可选的文献咨询阶段**：跑完 80% 清洗后，如果 `unresolved_decisions` 非空，可以让 skill 帮你查文献找方法学建议。
+新增**总是运行的数据评价阶段**：跑完 80% 清洗（和 Mode A）之后，自动用 23 条确定性规则给数据打分。
 
-- 4-问研究方向沟通（research_question / identification_strategy / key_references / journal_tier）
-- 三层 fallback 查询（本机已装 skill → 外部 MCP → Claude 内置知识）
-- 输出 `intake/literature_recommendations.md` + 合同审计字段 `literature_consultation` + 用户研究上下文 `research_context`
-- 架构 Principle 4 同步精化：禁止抓取分析数据，但允许信息性查询
+- 10 条 strength 规则 + 13 条 optimization 规则，每条带具体证据
+- A / A- / B+ / B / B- / C+ / C 七级评级
+- 输出 `intake/data_evaluation.md`（第 5 个文件）+ 合同审计字段 `data_evaluation`
+- **零外部依赖**：不联网、不调 LLM、不调其他 skill —— 完全确定性，可复现性 100%
+- 架构 Principle 4 同步收紧回严格版本（不联网 + 不调任何外部模型）
 
 ### v0.2（2026-04-29）
 
@@ -282,7 +272,7 @@ Layer 3 最后兜底：Claude 训练知识
 
 - 调查权重的 intake 阶段标记（NHANES / CHARLS / HRS）
 - 行业 / 地域代码的格式校验提示（NAICS / FIPS / GB/T 4754）
-- 把 4-问研究方向上推到 intake 主流程的 Slot 6（让所有未决决策都受益）
+- 数据评价规则库做成可插件化（用户可以贡献自己学科的规则集）
 
 ---
 
@@ -379,7 +369,7 @@ modules/01-data-intake/
 ├── audit-flagship-cleaning.md          设计前对 4 个清洗 skill 的审计报告
 └── references/
     ├── 01-mode-a-epi-patterns.md       公共卫生 / 流行病学专章
-    └── 02-literature-consultation.md   文献咨询阶段的三层查询设计
+    └── 02-data-evaluation.md           数据评价规则库 + 评级算法 + 输出格式
 ```
 
 LICENSE 与 .gitignore 在仓库根目录，由整条 pipeline 共享。
