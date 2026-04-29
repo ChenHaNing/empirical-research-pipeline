@@ -3,7 +3,7 @@
 > 一句话：把一份原始数据文件，自动整理成"可以直接拿去跑回归"的状态。
 
 [![License: CC BY-SA 4.0](https://img.shields.io/badge/License-CC%20BY--SA%204.0-lightgrey.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-v0.2-blue.svg)](#9-版本与计划)
+[![Version](https://img.shields.io/badge/version-v0.3-blue.svg)](#10-版本与计划)
 [![Claude Code Skill](https://img.shields.io/badge/Claude%20Code-skill-orange.svg)](https://claude.com/claude-code)
 
 仓库地址：<https://github.com/ChenHaNing/empirical-data-intake-skill>
@@ -347,7 +347,7 @@ empirical-tables-figures-skill       ← 未来：制表绘图
 
 如果你在论文中使用此 skill 进行数据准备，请在脚注或致谢部分说明：
 
-> Data preparation was assisted by the Empirical Data Intake Skill (v0.2, 2026), a Claude Code skill providing structured pre-analysis triage for empirical research. The skill produced a `data_contract.yaml` documenting the verified panel structure, missingness pattern, and outlier flags of the analysis dataset, together with a sample log recording all sample-construction steps. All cleaning decisions and downstream estimation were performed by the human author.
+> Data preparation was assisted by the Empirical Data Intake Skill (v0.3, 2026), a Claude Code skill providing structured pre-analysis triage for empirical research. The skill produced a `data_contract.yaml` documenting the verified panel structure, missingness pattern, and outlier flags of the analysis dataset, together with a sample log recording all sample-construction steps. All cleaning decisions and downstream estimation were performed by the human author.
 
 BibTeX：
 
@@ -356,7 +356,7 @@ BibTeX：
   title  = {Empirical Data Intake Skill: Pre-Analysis Triage for Empirical Research},
   author = {{Chen, Haning}},
   year   = {2026},
-  note   = {v0.2, Claude Code skill},
+  note   = {v0.3, Claude Code skill},
   url    = {https://github.com/ChenHaNing/empirical-data-intake-skill}
 }
 ```
