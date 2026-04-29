@@ -421,7 +421,7 @@ Two fields are added to `data_contract.yaml`:
 
 ## Output artifacts (the contract)
 
-Write three files to the user's working directory under `intake/`:
+Write four files to the user's working directory under `intake/` (a fifth file is added when the optional literature consultation phase runs):
 
 ### 1. `intake/cleaned_dataset.{dta|parquet|rds}` + `intake/cleaned_dataset.xlsx` (always)
 
@@ -453,10 +453,10 @@ The native-format file (`.dta` / `.parquet` / `.rds`) always includes:
 
 ### 2. `intake/data_contract.yaml`
 
-Cross-language generalization of StatsPAI's `data_contract()` dict. **Canonical schema** (v0.2):
+Cross-language generalization of StatsPAI's `data_contract()` dict. The full canonical schema (with all fields, invariants, and version evolution) is at [`docs/contract-spec.md`](../../docs/contract-spec.md). The example below shows the v0.3 shape for an econ panel run:
 
 ```yaml
-intake_version: "0.2"
+intake_version: "0.3"
 generated_at: "2026-04-29T02:30:50.876538+00:00"   # ISO-8601 UTC
 source_file: "raw/panel.dta"
 source_sheet: "Sheet1"                              # only for .xlsx; null otherwise
@@ -540,6 +540,23 @@ unresolved_decisions:                                 # human-readable list, sur
   - "tenure has 8% missingness and NOT MCAR — use MI in flagship Step 1.5"
   - "Survey weights not detected; declare in flagship before regression if applicable"
 
+# v0.3+ — present only when the user opted into literature consultation
+research_context:                                     # see contract-spec.md §2 for full field semantics
+  research_question: "..."
+  identification_strategy: TWFE
+  key_references_known: ["Author (Year)"]
+  target_journal_tier: mainstream
+
+literature_consultation:                              # see contract-spec.md §2 for full audit-field semantics
+  performed: true
+  performed_at: "2026-04-29T15:32:00Z"
+  user_consented: true
+  layers_used: [{layer: 1, strategy: "reuse local skills", skills_invoked: [...]}]
+  total_queries: 4
+  total_papers_screened: 35
+  output_file: "intake/literature_recommendations.md"
+  papers_recommended: 9
+
 routing_recommendation:
   flagship: "00.2-Full-empirical-analysis-skill_Stata"
   mode: default                                       # default | mode_a_epi | mode_b_ml_causal
@@ -553,6 +570,8 @@ routing_recommendation:
 - If `discipline == "epi"`, `epi_checks` block MUST be present
 - If `software_target == "stata"`, all column names in `renames_applied.values()` MUST be ASCII and ≤32 chars (Stata variable name limit)
 - `missing_pattern` only includes columns with non-zero missing rate (zero-missing cols are omitted to keep the contract small)
+- If `literature_consultation.performed == true`, `literature_consultation.user_consented` MUST also be true (no covert networking)
+- If `literature_consultation.layers_used[*].layer == 3`, the corresponding output file MUST carry an explicit "LLM-inferred, please verify" disclaimer in its header
 
 ### 3. `intake/routing_recommendation.md`
 
@@ -585,6 +604,36 @@ You should now invoke flagship: **00.2 Stata** (mode: default).
 - 23 units with year gaps. Decide whether to drop or accept unbalanced panel.
 - Survey weights not detected — if applicable, declare before regression.
 ```
+
+### 4. `intake/literature_recommendations.md` (optional, only when literature consultation runs)
+
+This file is produced **only** when the optional literature consultation phase is invoked (see "Literature consultation" section above). When it exists, it serves as a methodological-precedent advisory report — never a data file.
+
+Required header structure:
+
+```markdown
+# 文献咨询报告
+
+**生成时间**: <ISO-8601 UTC>
+**研究主题**: <user's answer to question 1>
+**识别策略**: <user's answer to question 2>
+**期刊定位**: <user's answer to question 4>
+**查询源**: Layer <N> (<details of which skills/MCPs invoked>)
+**总文献筛选**: <X> 篇 → 入选: <Y> 篇
+
+[For each unresolved_decisions item, list 3-5 papers with citation,
+ approach, relevance, applicability to a downstream module, and a
+ paper-citation template ready to paste into the user's manuscript.]
+
+## 文献咨询审计
+[Full query log: each query string, layer used, source invoked, return count]
+
+## Disclaimer
+[Required disclaimer about user verifying citations and making final
+ research-design decisions]
+```
+
+When Layer 3 (Claude internal knowledge) is the only source used, the disclaimer MUST explicitly say so and warn the user to verify citation existence. See `references/02-literature-consultation.md` for the full output specification.
 
 ---
 
